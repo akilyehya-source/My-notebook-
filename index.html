@@ -112,7 +112,8 @@ body.lib .bar,body.lib .desk,body.lib .cap{display:none}
 #nsw{display:flex;gap:8px;margin-top:10px}
 #nsw .sw{width:30px;height:30px;border-radius:50%;padding:0;border:2px solid transparent}
 #nsw .sw.on{border-color:#fff}
-#cm{margin-bottom:6px;line-height:1.5}
+#cm{margin-bottom:6px;line-height:1.5}.exp .cap:empty::before{content:none}
+.exp .it{cursor:default}
 .sec{font:600 22px Newsreader,Georgia,serif;margin:0 0 18px}
 .shelf.wide{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
 .wide .cov{aspect-ratio:3/2}
@@ -185,7 +186,7 @@ body.bd #bd{display:flex}
   <button id="bid">+ Idea</button><button id="bph">+ Photo</button><input type="file" id="bf" accept="image/*" hidden>
   <select id="bbg" aria-label="Board background"><option value="cork">Cork</option><option value="white">Whiteboard</option><option value="slate">Slate</option><option value="blue">Blueprint</option></select>
   <span class="grp"><button id="bzm" aria-label="Zoom out">−</button><span id="bzp">100%</span><button id="bzpl" aria-label="Zoom in">+</button></span>
-  <span id="bhint"></span>
+  <button id="bex">Export</button><span id="bhint"></span>
  </div>
  <div class="bhold"><div class="bwrap" id="bwrap"><div id="bsizer"><div class="world" id="world"><svg id="strings" width="2400" height="1600"></svg></div></div></div>
  <p id="bempty">Add a note, an idea, or a photo to start your board.</p></div>
@@ -195,6 +196,9 @@ body.bd #bd{display:flex}
 <dialog id="nd"><h2 id="nh">New notebook</h2><label>Title<input id="nt" maxlength="40"></label><label id="nlb">Cover</label><div id="nsw"></div>
 <div class="row"><button id="nno">Cancel</button><button id="nok" style="background:#ffd35a;color:#2b2118;font-weight:600">Save</button></div></dialog>
 <dialog id="cf"><p id="cm"></p><div class="row"><button id="cno">Cancel</button><button id="cok" style="background:#ffd35a;color:#2b2118;font-weight:600">OK</button></div></dialog>
+<dialog id="bx"><h2>Export board</h2><p style="font-size:13px;opacity:.8">Saves the whole board, cropped to your cards.</p>
+<p id="bxs" role="status" style="min-height:18px;margin-top:10px;font-size:13px"></p>
+<div class="row" style="flex-wrap:wrap"><button id="bxx">Close</button><button id="bxp">Image (PNG)</button><button id="bxd" style="background:#ffd35a;color:#2b2118;font-weight:600">PDF</button></div></dialog>
 <dialog id="dlg"><h2>Export as a book</h2>
 <label>Book title<input id="bt" value="My Notebook" maxlength="60"></label>
 <label>Author (optional)<input id="ba" maxlength="40"></label>
@@ -444,6 +448,45 @@ $('bbg').onchange=e=>{B.bg=e.target.value;$('bd').dataset.bg=B.bg;$('world').dat
 $('bzm').onclick=()=>setScale(B.sc-.2);$('bzpl').onclick=()=>setScale(B.sc+.2);
 $('bhome').onclick=closeBoard;
 $('bwrap').addEventListener('pointerdown',e=>{if(e.target.closest('.it'))return;select(null);if(LINK)endLink();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur()});
+
+async function boardCanvas(){
+ if(!B.items.length)throw new Error('empty');
+ let x0=2400,y0=1600,x1=0,y1=0;
+ B.items.forEach(i=>{const e=el(i),h=e?e.offsetHeight:i.w;x0=Math.min(x0,i.x);y0=Math.min(y0,i.y);x1=Math.max(x1,i.x+i.w);y1=Math.max(y1,i.y+h)});
+ x0=Math.max(0,x0-70);y0=Math.max(0,y0-60);x1=Math.min(2400,x1+70);y1=Math.min(1600,y1+110);
+ const W=x1-x0,H=y1-y0,wrap=document.createElement('div');
+ wrap.className='exp';wrap.style.cssText=`position:absolute;left:0;top:0;z-index:-1;width:${W}px;height:${H}px;overflow:hidden`;
+ const cl=$('world').cloneNode(true);cl.removeAttribute('id');cl.style.cssText=`position:absolute;left:${-x0}px;top:${-y0}px;transform:none;width:2400px;height:1600px`;
+ cl.querySelectorAll('.ctl').forEach(n=>n.remove());
+ cl.querySelectorAll('.it').forEach(n=>{n.classList.remove('sel','src');n.querySelectorAll('[contenteditable]').forEach(c=>c.removeAttribute('contenteditable'))});
+ wrap.append(cl);document.body.append(wrap);
+ try{await Promise.all(['22px Caveat','21px Caveat','600 22px Newsreader'].map(f=>document.fonts.load(f)))}catch(e){}
+ await new Promise(r=>setTimeout(r,80));
+ try{return await html2canvas(wrap,{scale:Math.min(2,4096/Math.max(W,H)),backgroundColor:'#ffffff',logging:false})}finally{wrap.remove()}}
+async function boardPdf(c,title){
+ const land=c.width>=c.height,PW=land?1754:1240,PH=land?1240:1754,p=document.createElement('canvas');p.width=PW;p.height=PH;
+ const x=p.getContext('2d');x.fillStyle='#faf6ec';x.fillRect(0,0,PW,PH);
+ x.fillStyle='#2a1e12';x.font='600 56px Newsreader,Georgia,serif';let t=title;while(t.length>3&&x.measureText(t).width>PW-160)t=t.slice(0,-2);if(t!==title)t+='\u2026';
+ x.fillText(t,80,130);x.fillStyle='#b9a98c';x.fillRect(80,160,PW-160,2);
+ const top=200,bot=PH-110,aw=PW-160,ah=bot-top,r=Math.min(aw/c.width,ah/c.height),dw=c.width*r,dh=c.height*r;
+ x.shadowColor='rgba(0,0,0,.25)';x.shadowBlur=24;x.shadowOffsetY=8;x.drawImage(c,(PW-dw)/2,top+(ah-dh)/2,dw,dh);x.shadowColor='transparent';
+ x.fillStyle='#8a7a60';x.font='24px Inter,sans-serif';x.fillText(new Date().toLocaleDateString(),80,PH-60);
+ const pdf=new jspdf.jsPDF({unit:'pt',format:'a4',orientation:land?'landscape':'portrait',compress:true});
+ pdf.addImage(p.toDataURL('image/jpeg',.92),'JPEG',0,0,land?841.89:595.28,land?595.28:841.89);return pdf.output('blob')}
+async function exportBoard(kind){const st=$('bxs'),bs=[$('bxp'),$('bxd')];
+ if(!B.items.length){st.textContent='Add a card first.';return}
+ if(!DL){st.textContent='Saving files is not available here.';return}
+ if(!window.html2canvas||(kind==='pdf'&&!window.jspdf)){st.textContent='The export tools did not load. Reload and try again.';return}
+ bs.forEach(b=>b.disabled=true);st.textContent='Preparing your board';
+ try{const c=await boardCanvas(),name=(BCUR.title.replace(/[\\/:*?"<>|]+/g,'').trim()||'Board');let blob,fn;
+  if(kind==='png'){blob=await new Promise(r=>c.toBlob(r,'image/png'));fn=name+'.png'}else{blob=await boardPdf(c,BCUR.title);fn=name+'.pdf'}
+  await DL.save({filename:fn,data:blob});st.textContent='Saved.'}
+ catch(e){st.textContent=e&&e.code==='declined'?'Export cancelled.':'Export failed. Try again.'}
+ bs.forEach(b=>b.disabled=false)}
+$('bex').onclick=()=>{$('bxs').textContent='';$('bx').showModal()};
+$('bxx').onclick=()=>$('bx').close();
+$('bxp').onclick=()=>exportBoard('png');
+$('bxd').onclick=()=>exportBoard('pdf');
 (async()=>{let L;try{L=await kvGet('lib')}catch(e){}
  if(L&&L.books)LIB=L;else{LIB={books:[],prefs:{}};
   try{const r=localStorage.getItem('notebook-v1');if(r){const o=JSON.parse(r);if(o&&o.pages&&o.pages.length){const b={id:'b'+Date.now().toString(36),title:'My Notebook',c1:COVERS[0][0],c2:COVERS[0][1],upd:Date.now(),count:o.pages.length};LIB.books.push(b);LIB.prefs={theme:o.theme||'',pen:o.pen,ink:o.ink};kvSet('book:'+b.id,{pages:o.pages,cur:o.cur||0})}}}catch(e){}
